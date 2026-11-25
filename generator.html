@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Der Generator – virtueller Schülerversuch</title>
+<style>
+  :root {
+    --hg: #ffffff; --flaeche: #f4f6f9; --rand: #d5dbe3; --text: #1b2430; --text2: #5a6675;
+    --akzent: #1f5c99;
+    --strom: #c62828; --spannung: #1f5c99; --ladung: #2e7d32;
+    --schrift: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--flaeche); color: var(--text); font-family: var(--schrift);
+         font-size: 1rem; line-height: 1.4; }
+  body.gross { font-size: 1.25rem; }
+  header { display: flex; align-items: center; gap: .8em; padding: .5em 1em;
+           background: var(--akzent); color: #fff; flex-wrap: wrap; }
+  header h1 { font-size: 1.3em; margin: 0; font-weight: 600; flex: 1 1 auto; }
+  header button { background: rgba(255,255,255,.15); color: #fff; border-color: rgba(255,255,255,.4); }
+  main { display: grid; gap: .8em; padding: .8em; }
+  .karte { background: var(--hg); border: 1px solid var(--rand); border-radius: 10px; padding: .7em; min-width: 0; }
+  .karte h2 { font-size: 1em; margin: 0 0 .4em; color: var(--text2); font-weight: 600; }
+  canvas { display: block; width: 100%; touch-action: none; }
+  button { font: inherit; font-size: 1em; padding: .45em .9em; min-height: 2.6em; min-width: 2.6em;
+           border-radius: 8px; border: 1px solid var(--rand); background: var(--hg); color: var(--text); cursor: pointer; }
+  button:hover { border-color: var(--akzent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.haupt { background: var(--akzent); color: #fff; border-color: var(--akzent); font-weight: 600; }
+  button.aktiv { outline: 3px solid var(--akzent); outline-offset: 1px; background: #e3edf8; }
+  button.gross { font-size: 1.15em; font-weight: 600; padding: .6em 1.1em; }
+  .zeile { display: flex; flex-wrap: wrap; gap: .5em; align-items: center; }
+  .messwerte { display: grid; grid-template-columns: repeat(auto-fit, minmax(9em, 1fr)); gap: .3em .8em;
+               margin-top: .6em; font-variant-numeric: tabular-nums; }
+  .messwerte div { background: var(--flaeche); border-radius: 6px; padding: .3em .5em; font-size: 1.1em; }
+  .messwerte b { font-weight: 600; }
+  .regler { display: grid; grid-template-columns: repeat(auto-fit, minmax(16em, 1fr)); gap: .6em 1.4em; }
+  .regler label { display: block; font-weight: 600; }
+  .regler .wert { float: right; font-weight: 400; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; height: 2.2em; accent-color: var(--akzent); }
+  .presets { margin-top: .7em; }
+  #schritte { display: none; margin-top: .6em; padding: .6em .8em; border-left: 5px solid var(--akzent);
+              background: #eef4fb; border-radius: 6px; }
+  #schritte.an { display: block; }
+  #schrittText { font-size: 1.1em; margin: .2em 0 .5em; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .klein { color: var(--text2); font-size: .85em; }
+  .auftrag { background: #fff8e1; border-left: 5px solid #e0a800; border-radius: 6px; padding: .5em .8em; margin: .5em 0; font-size: 1.05em; }
+  kbd { border: 1px solid var(--rand); border-bottom-width: 2px; border-radius: 4px; padding: 0 .3em;
+        font-size: .85em; background: var(--flaeche); }
+  table.tab { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 1.05em; }
+  table.tab th, table.tab td { border: 1px solid var(--rand); padding: .3em .5em; text-align: center; }
+  table.tab th { background: var(--flaeche); font-weight: 600; }
+  .tabhuelle { max-height: 22em; overflow-y: auto; }
+  .strom { color: var(--strom); } .spannung { color: var(--spannung); } .ladung { color: var(--ladung); }
+</style>
+</head>
+<body>
+<style>
+  main { grid-template-columns: minmax(0, 11fr) minmax(0, 8fr);
+         grid-template-areas: "szene diagramm" "steuerung tabelle" "regler regler" "info info"; }
+  @media (max-width: 900px) {
+    main { grid-template-columns: minmax(0, 1fr);
+           grid-template-areas: "szene" "steuerung" "diagramm" "tabelle" "regler" "info"; }
+  }
+  #szeneKarte { grid-area: szene; } #diagrammKarte { grid-area: diagramm; } #steuerKarte { grid-area: steuerung; }
+  #tabKarte { grid-area: tabelle; } #reglerKarte { grid-area: regler; } #infoKarte { grid-area: info; }
+  #szene { aspect-ratio: 1200 / 560; height: auto; max-height: 62vh; min-height: 190px; }
+  #plotPhi, #plotU { height: 24vh; min-height: 160px; }
+  .gruppe { margin: .2em 0 .7em; }
+  .gruppe > b { display: block; margin-bottom: .25em; }
+  .gruppe button.aktiv { font-weight: 600; }
+  .gruppen { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); gap: 0 1.4em; }
+  .hinweis { margin-top: .6em; padding: .4em .7em; border-radius: 6px; background: #fff3e0; border-left: 5px solid #d95f02; display: none; }
+  .hinweis.an { display: block; }
+  .verh { background: #eef6ee; }
+  sub { font-size: .75em; }
+  #btn45 { font-weight: 600; }
+  .vphi { font-family: "Cambria Math", "Times New Roman", Times, "STIX Two Math", serif; font-style: italic; font-size: 1.15em; line-height: 1; }
+</style>
+<header>
+  <h1>Der Generator – virtueller Schülerversuch</h1>
+  <button id="btnGross" title="Große Schrift für den Beamer (G)">Beamer-Ansicht</button>
+  <button id="btnVoll" title="Vollbild (F)">Vollbild</button>
+</header>
+<main>
+  <section class="karte" id="szeneKarte">
+    <h2>Versuch: eine Spule dreht sich zwischen den Polen eines Magneten</h2>
+    <canvas id="szene" aria-label="Generator: drehbare Spule zwischen Nord- und Südpol, Schleifringe, Spannungsmessgerät und Lampe"></canvas>
+    <p class="klein">Links der Versuch von vorn, rechts oben derselbe Versuch <b>von oben</b> gesehen. Blaue Linien: Magnetfeld <i>B</i> vom Nordpol (N) zum Südpol (S).
+      Violetter Pfeil: Flächenvektor <i>A</i>⃗ der Spule (steht senkrecht auf der Spule). <span class="vphi">φ</span> ist der Winkel zwischen <i>A</i>⃗ und <i>B</i>⃗.</p>
+  </section>
+
+  <section class="karte" id="diagrammKarte">
+    <h2>Magnetischer Fluss <i>Φ</i> durch die Spule</h2>
+    <canvas id="plotPhi" aria-label="Diagramm des magnetischen Flusses"></canvas>
+    <h2 style="margin-top:.6em">Spannung <i>U</i><sub>i</sub> am Messgerät</h2>
+    <canvas id="plotU" aria-label="Diagramm der induzierten Spannung"></canvas>
+  </section>
+
+  <section class="karte" id="steuerKarte">
+    <div class="zeile">
+      <button id="btnStart" class="haupt" title="Start/Pause (Leertaste)">▶ Start</button>
+      <button id="btn45" title="Um 45° weiterdrehen und anhalten (W)">↻ Um 45° weiterdrehen</button>
+      <button id="btnSchritt" title="Ein kleines Stück weiter (→)">Einzelschritt</button>
+      <button id="btnReset" title="Spule auf 0°, Diagramme leeren (R)">↺ Zurücksetzen</button>
+      <button id="btnLangsam" title="Zeitlupe (L)">Zeitlupe: aus</button>
+    </div>
+    <div class="messwerte" id="messwerte"></div>
+    <div class="hinweis" id="hinweis"></div>
+    <div id="schritte">
+      <div class="zeile" style="justify-content:space-between">
+        <b id="schrittNr"></b>
+        <span class="zeile"><button id="btnZurueck">◀ zurück</button><button id="btnWeiter" class="haupt">weiter ▶</button></span>
+      </div>
+      <div id="schrittText"></div>
+    </div>
+  </section>
+
+  <section class="karte" id="tabKarte">
+    <h2>Messtabelle</h2>
+    <p class="klein" style="margin-top:0">Stellen Sie die Werte ein, lassen Sie die Spule drehen und tragen Sie den Scheitelwert <i>Û</i> (höchste Spannung) ein. Ändern Sie immer nur <b>eine</b> Größe.</p>
+    <div class="zeile" style="margin-bottom:.5em">
+      <button id="btnEintragen" class="haupt" title="Messwerte eintragen (M)">Messwerte eintragen</button>
+      <button id="btnFormel" title="Formel N·B·A·2π·f ausrechnen">Mit Formel vergleichen</button>
+      <button id="btnLoeschen">Letzte Zeile löschen</button>
+    </div>
+    <div class="tabhuelle"><table class="tab" id="tabelle"></table></div>
+  </section>
+
+  <section class="karte" id="reglerKarte">
+    <h2>Einstellungen</h2>
+    <div class="regler" id="regler"></div>
+    <div class="gruppen" style="margin-top:.8em">
+      <div class="gruppe"><b>Antrieb</b><div class="zeile" id="gAntrieb"></div></div>
+      <div class="gruppe"><b>Anschluss der Spule</b><div class="zeile" id="gAnschluss"></div></div>
+    </div>
+    <b>Schnell einstellen</b>
+    <div class="zeile presets" id="presets" style="margin-top:.3em"></div>
+    <div class="zeile presets">
+      <button id="btnSchrittmodus">Schritt für Schritt besprechen</button>
+      <button id="btnCSV" title="Messtabelle als Datei speichern">Messtabelle speichern (CSV)</button>
+      <button id="btnPNG" title="Bild von Versuch und Diagrammen speichern">Bild speichern (PNG)</button>
+    </div>
+  </section>
+
+  <section class="karte" id="infoKarte">
+    <details>
+      <summary>Was wird hier simuliert?</summary>
+      <div id="infoText"></div>
+    </details>
+    <p class="klein">Tastatur: <kbd>Leertaste</kbd> Start/Pause · <kbd>W</kbd> um 45° weiterdrehen · <kbd>M</kbd> Messwerte eintragen · <kbd>R</kbd> Zurücksetzen ·
+      <kbd>→</kbd> Einzelschritt · <kbd>L</kbd> Zeitlupe · <kbd>G</kbd> Beamer-Ansicht · <kbd>F</kbd> Vollbild</p>
+  </section>
+</main>
+
+<script>
+"use strict";
+/* =====================================================================
+   BAUKASTEN – allgemein verwendbar, in neuen Simulationen unverändert lassen
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+/** Schriftgröße auf der Leinwand – wächst in der Beamer-Ansicht mit */
+const fs = px => Math.round(px * (document.body.classList.contains("gross") ? 1.3 : 1));
+
+/** Zahl deutsch formatieren: fmt(1.234, 2, "m") -> "1,23 m" */
+function fmt(x, stellen = 2, einheit = "") {
+  if (!isFinite(x)) return "–";
+  const s = x.toLocaleString("de-DE", { minimumFractionDigits: stellen, maximumFractionDigits: stellen });
+  return einheit ? s + " " + einheit : s;
+}
+
+/** Canvas mit scharfer Darstellung (HiDPI). Liefert {ctx, b, h} in CSS-Pixeln, passt sich an. */
+function leinwand(canvas, beiGroesse) {
+  const obj = { canvas, ctx: canvas.getContext("2d"), b: 0, h: 0 };
+  const anpassen = (melden = true) => {
+    const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    obj.b = Math.max(1, r.width); obj.h = Math.max(1, r.height);
+    canvas.width = Math.round(obj.b * dpr); canvas.height = Math.round(obj.h * dpr);
+    obj.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (melden && beiGroesse) beiGroesse();
+  };
+  anpassen(false);                       // Größe sofort setzen, Neuzeichnen erst bei Änderungen
+  new ResizeObserver(() => anpassen()).observe(canvas);
+  return obj;
+}
+
+/** Pfeil zeichnen (für Kräfte, Geschwindigkeiten, Maße) */
+function pfeil(ctx, x1, y1, x2, y2, farbe, breite = 3, spitze = 12) {
+  const w = Math.atan2(y2 - y1, x2 - x1), l = Math.hypot(x2 - x1, y2 - y1);
+  if (l < 1) return;
+  const s = Math.min(spitze, l * 0.6);
+  ctx.save(); ctx.strokeStyle = ctx.fillStyle = farbe; ctx.lineWidth = breite; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2 - s * 0.7 * Math.cos(w), y2 - s * 0.7 * Math.sin(w)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - s * Math.cos(w - 0.4), y2 - s * Math.sin(w - 0.4));
+  ctx.lineTo(x2 - s * Math.cos(w + 0.4), y2 - s * Math.sin(w + 0.4)); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+/** Text mit Hintergrund (gut lesbar über Linien) */
+function beschriftung(ctx, text, x, y, { farbe = "#1b2430", groesse = 15, ausrichtung = "center",
+                                        grundlinie = "middle", fett = false, hintergrund = true } = {}) {
+  ctx.save(); groesse = fs(groesse); ctx.font = `${fett ? "600 " : ""}${groesse}px ${css("--schrift")}`;
+  ctx.textAlign = ausrichtung; ctx.textBaseline = grundlinie;
+  const m = ctx.measureText(text), pad = 3;
+  let x0 = ausrichtung === "center" ? x - m.width / 2 : ausrichtung === "right" ? x - m.width : x;
+  if (hintergrund) { ctx.fillStyle = "rgba(255,255,255,.85)";
+    ctx.fillRect(x0 - pad, y - groesse * 0.6 - pad, m.width + 2 * pad, groesse * 1.2 + 2 * pad); }
+  ctx.fillStyle = farbe; ctx.fillText(text, x, y); ctx.restore();
+}
+
+/** "Schöne" Achsenteilung */
+function teilung(min, max, ziel = 6) {
+  const roh = (max - min) / ziel, p = Math.pow(10, Math.floor(Math.log10(roh)));
+  const f = roh / p, schritt = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
+  const t = []; for (let v = Math.ceil(min / schritt) * schritt; v <= max + 1e-9 * schritt; v += schritt) t.push(v);
+  return { t, schritt, stellen: Math.max(0, -Math.floor(Math.log10(schritt) + 1e-9)) };
+}
+
+/**
+ * Live-Diagramm (Zeitreihen). Beispiel:
+ *   const d = new Diagramm(canvas, {xName:"t", xEinheit:"s", yName:"x", yEinheit:"m", fenster:10});
+ *   d.reihe("x", "Auslenkung", "#1f5c99");  d.punkt("x", t, x);  d.zeichnen();
+ * fenster = sichtbare Zeitspanne (mitlaufend); yMin/yMax fest oder automatisch.
+ */
+class Diagramm {
+  constructor(canvas, opt) {
+    this.o = Object.assign({ xName: "t", xEinheit: "s", yName: null, yEinheit: "", fenster: 10,
+                             yMin: null, yMax: null }, opt);
+    this.reihen = new Map(); this.lw = leinwand(canvas, () => this.zeichnen());
+  }
+  /** name = Text für den Knopf, achse = Achsenbeschriftung, z. B. "s in cm" */
+  reihe(id, name, farbe, sichtbar = true, achse = name) { this.reihen.set(id, { name, farbe, sichtbar, achse, d: [] }); }
+  punkt(id, x, y) { const r = this.reihen.get(id); r.d.push([x, y]); if (r.d.length > 20000) r.d.splice(0, 5000); }
+  leeren() { for (const r of this.reihen.values()) r.d = []; }
+  achsen(opt) { Object.assign(this.o, opt); }
+  zeichnen() {
+    const { ctx, b, h } = this.lw, o = this.o, R = { l: 62, r: 14, o: 18, u: 46 };
+    ctx.clearRect(0, 0, b, h);
+    const sicht = [...this.reihen.values()].filter(r => r.sichtbar);
+    let xMax = 0; for (const r of sicht) if (r.d.length) xMax = Math.max(xMax, r.d[r.d.length - 1][0]);
+    const x1 = Math.max(o.fenster, xMax), x0 = x1 - o.fenster;
+    let y0 = o.yMin, y1 = o.yMax;
+    if (y0 === null || y1 === null) {
+      let lo = Infinity, hi = -Infinity;
+      for (const r of sicht) for (const [x, y] of r.d) if (x >= x0) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+      if (!isFinite(lo)) { lo = -1; hi = 1; }
+      if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+      const rand = 0.1 * (hi - lo);
+      if (y0 === null) y0 = lo - rand; if (y1 === null) y1 = hi + rand;
+    }
+    const X = x => R.l + (x - x0) / (x1 - x0) * (b - R.l - R.r);
+    const Y = y => h - R.u - (y - y0) / (y1 - y0) * (h - R.o - R.u);
+    ctx.font = `${fs(13)}px ${css("--schrift")}`; ctx.lineWidth = 1;
+    const tx = teilung(x0, x1, Math.max(3, Math.floor(b / 90))), ty = teilung(y0, y1, Math.max(3, Math.floor(h / 55)));
+    ctx.strokeStyle = "#e3e7ec"; ctx.fillStyle = "#5a6675";
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (const v of tx.t) { ctx.beginPath(); ctx.moveTo(X(v), R.o); ctx.lineTo(X(v), h - R.u); ctx.stroke();
+                            ctx.fillText(fmt(v, tx.stellen), X(v), h - R.u + 5); }
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (const v of ty.t) { ctx.beginPath(); ctx.moveTo(R.l, Y(v)); ctx.lineTo(b - R.r, Y(v)); ctx.stroke();
+                            ctx.fillText(fmt(v, ty.stellen), R.l - 6, Y(v)); }
+    // Achsen (Nulllinie hervorheben)
+    ctx.strokeStyle = "#1b2430"; ctx.lineWidth = 1.5; ctx.beginPath();
+    const yNull = (y0 < 0 && y1 > 0) ? Y(0) : h - R.u;
+    ctx.moveTo(R.l, yNull); ctx.lineTo(b - R.r, yNull); ctx.moveTo(R.l, R.o); ctx.lineTo(R.l, h - R.u); ctx.stroke();
+    ctx.fillStyle = "#1b2430"; ctx.font = `600 ${fs(14)}px ${css("--schrift")}`;
+    ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+    ctx.fillText(`${o.xName} in ${o.xEinheit}`, b - R.r, h - 4);
+    ctx.save(); ctx.translate(14, R.o); ctx.rotate(-Math.PI / 2); ctx.textAlign = "right"; ctx.textBaseline = "top";
+    const yText = o.yName ? (o.yEinheit ? `${o.yName} in ${o.yEinheit}` : o.yName) : sicht.map(r => r.achse).join(",  ");
+    ctx.fillText(yText, 0, 0); ctx.restore();
+    // Kurven
+    ctx.save(); ctx.beginPath(); ctx.rect(R.l, R.o, b - R.l - R.r, h - R.o - R.u); ctx.clip();
+    for (const r of sicht) {
+      ctx.strokeStyle = r.farbe; ctx.lineWidth = 2.5; ctx.beginPath(); let an = false;
+      for (const [x, y] of r.d) { if (x < x0 - 1e-9) continue; an ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)); an = true; }
+      ctx.stroke();
+      if (r.d.length) { const [x, y] = r.d[r.d.length - 1]; ctx.fillStyle = r.farbe;
+                        ctx.beginPath(); ctx.arc(X(x), Y(y), 4.5, 0, 7); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+  /** Knöpfe zum Ein-/Ausblenden der Kurven in ein Element einfügen */
+  auswahl(el) {
+    el.innerHTML = "";
+    for (const [id, r] of this.reihen) {
+      const k = document.createElement("button");
+      k.innerHTML = `<span style="color:${r.farbe}">━━</span> ${r.name}`;
+      k.classList.toggle("aktiv", r.sichtbar);
+      k.onclick = () => { r.sichtbar = !r.sichtbar; k.classList.toggle("aktiv", r.sichtbar); this.zeichnen(); };
+      el.appendChild(k);
+    }
+  }
+}
+
+/**
+ * Energiebalken. Beispiel:
+ *   const eb = new Balken(canvas, [{id:"pot", name:"E_Spann", farbe:css("--e-pot")}, ...], "J");
+ *   eb.zeichnen({pot: 0.2, kin: 0.1, ges: 0.3}, maxWert);
+ */
+class Balken {
+  constructor(canvas, arten, einheit = "J") { this.arten = arten; this.einheit = einheit;
+    this.lw = leinwand(canvas, () => this.letzte && this.zeichnen(...this.letzte)); }
+  zeichnen(werte, max) {
+    this.letzte = [werte, max];
+    const { ctx, b, h } = this.lw, n = this.arten.length, R = { l: 10, r: 10, o: 26, u: 30 };
+    ctx.clearRect(0, 0, b, h);
+    const bw = (b - R.l - R.r) / n, H = h - R.o - R.u, sk = max > 0 ? H / max : 0;
+    ctx.strokeStyle = "#1b2430"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(R.l, h - R.u); ctx.lineTo(b - R.r, h - R.u); ctx.stroke();
+    this.arten.forEach((a, i) => {
+      const v = Math.max(0, werte[a.id] || 0), x = R.l + i * bw + bw * 0.18, w = bw * 0.64;
+      ctx.fillStyle = a.farbe; ctx.fillRect(x, h - R.u - v * sk, w, v * sk);
+      ctx.font = `600 ${fs(14)}px ${css("--schrift")}`; ctx.fillStyle = "#1b2430"; ctx.textAlign = "center";
+      ctx.textBaseline = "top"; ctx.fillText(a.name, x + w / 2, h - R.u + 6);
+      ctx.textBaseline = "bottom"; ctx.font = `${fs(13)}px ${css("--schrift")}`;
+      ctx.fillText(fmt(werte[a.id] || 0, a.stellen ?? 2, this.einheit), x + w / 2, Math.max(R.o + 2, h - R.u - v * sk - 4));
+    });
+  }
+}
+
+/** Regler erzeugen. Liefert Objekt mit .wert; ruft beiAenderung(wert) auf. */
+function regler(container, { id, name, min, max, schritt, wert, einheit = "", stellen = 2, beiAenderung }) {
+  const box = document.createElement("div");
+  box.innerHTML = `<label for="r_${id}">${name} <span class="wert" id="w_${id}"></span></label>
+                   <input type="range" id="r_${id}" min="${min}" max="${max}" step="${schritt}" value="${wert}">`;
+  container.appendChild(box);
+  const inp = box.querySelector("input"), anz = box.querySelector(".wert");
+  const r = { get wert() { return parseFloat(inp.value); },
+              setzen(v) { inp.value = v; anz.textContent = fmt(parseFloat(inp.value), stellen, einheit); },
+              sperren(an) { inp.disabled = an; } };
+  r.setzen(wert);
+  inp.addEventListener("input", () => { anz.textContent = fmt(r.wert, stellen, einheit); beiAenderung && beiAenderung(r.wert); });
+  return r;
+}
+
+/** Datei aus der Seite heraus speichern (funktioniert offline) */
+function speichern(name, inhalt, typ) {
+  const a = document.createElement("a");
+  a.href = typeof inhalt === "string" ? URL.createObjectURL(new Blob([inhalt], { type: typ })) : inhalt;
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+
+/** Mehrere Canvas nebeneinander als ein PNG speichern */
+function alsPNG(name, canvasListe) {
+  const b = canvasListe.reduce((s, c) => s + c.width, 0), h = Math.max(...canvasListe.map(c => c.height));
+  const z = document.createElement("canvas"); z.width = b; z.height = h;
+  const ctx = z.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, b, h);
+  let x = 0; for (const c of canvasListe) { ctx.drawImage(c, x, 0); x += c.width; }
+  speichern(name, z.toDataURL("image/png"));
+}
+
+/**
+ * Simulationsschleife mit festem Zeitschritt (physikalisch sauber, unabhängig von der Bildrate).
+ *   const lauf = new Schleife({dt: 0.001, schritt: dt => {...}, bild: () => {...}});
+ *   lauf.start(); lauf.pause(); lauf.tempo = 0.2 (Zeitlupe)
+ */
+class Schleife {
+  constructor({ dt, schritt, bild, beiStatus }) {
+    Object.assign(this, { dt, schritt, bild, beiStatus, laeuft: false, tempo: 1, rest: 0, tAlt: 0 });
+    const tick = tJetzt => {
+      if (this.laeuft) {
+        let echt = Math.min(0.1, (tJetzt - this.tAlt) / 1000);   // nach Tab-Wechsel nicht springen
+        this.rest += echt * this.tempo;
+        let n = 0; while (this.rest >= this.dt && n < 20000) { this.schritt(this.dt); this.rest -= this.dt; n++; }
+      }
+      this.tAlt = tJetzt; this.bild(); requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+  start() { this.laeuft = true; this.beiStatus && this.beiStatus(true); }
+  pause() { this.laeuft = false; this.beiStatus && this.beiStatus(false); }
+  umschalten() { this.laeuft ? this.pause() : this.start(); }
+  einzelschritt(dauer) { this.pause(); const n = Math.round(dauer / this.dt); for (let i = 0; i < n; i++) this.schritt(this.dt); }
+}
+
+/**
+ * Schritt-für-Schritt-Modus zum Besprechen im Plenum.
+ *   schrittmodus([{text:"…", vorbereiten: () => {...}}, ...])
+ */
+function schrittmodus(schritte) {
+  let i = 0; const box = $("schritte");
+  const zeigen = () => { $("schrittNr").textContent = `Schritt ${i + 1} von ${schritte.length}`;
+    $("schrittText").innerHTML = schritte[i].text; schritte[i].vorbereiten && schritte[i].vorbereiten();
+    $("btnZurueck").disabled = i === 0; $("btnWeiter").disabled = i === schritte.length - 1; };
+  $("btnZurueck").onclick = () => { if (i > 0) { i--; zeigen(); } };
+  $("btnWeiter").onclick = () => { if (i < schritte.length - 1) { i++; zeigen(); } };
+  return { an() { box.classList.add("an"); i = 0; zeigen(); }, aus() { box.classList.remove("an"); },
+           get aktiv() { return box.classList.contains("an"); } };
+}
+
+/** Vollbild, Beamer-Ansicht, Tastatur */
+function bedienungEinrichten(lauf, { reset, einzel }) {
+  $("btnVoll").onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+  $("btnGross").onclick = () => { document.body.classList.toggle("gross"); $("btnGross").classList.toggle("aktiv"); };
+  $("btnStart").onclick = () => lauf.umschalten();
+  $("btnReset").onclick = reset;
+  $("btnSchritt").onclick = einzel;
+  $("btnLangsam").onclick = () => { lauf.tempo = lauf.tempo === 1 ? 0.2 : 1;
+    $("btnLangsam").textContent = `Zeitlupe: ${lauf.tempo === 1 ? "aus" : "an (×0,2)"}`;
+    $("btnLangsam").classList.toggle("aktiv", lauf.tempo !== 1); };
+  lauf.beiStatus = an => { $("btnStart").textContent = an ? "❚❚ Pause" : "▶ Start"; };
+  document.addEventListener("keydown", e => {
+    if (e.target.tagName === "INPUT" && e.key !== " ") return;
+    const k = e.key.toLowerCase();
+    if (k === " ") { e.preventDefault(); lauf.umschalten(); }
+    else if (k === "r") reset(); else if (k === "arrowright") einzel();
+    else if (k === "l") $("btnLangsam").click(); else if (k === "g") $("btnGross").click();
+    else if (k === "f") $("btnVoll").click();
+  });
+}
+
+/* =====================================================================
+   MODELL – Generator (Spule dreht sich im homogenen Magnetfeld)
+   φ = Winkel zwischen Flächenvektor A⃗ und Magnetfeld B⃗ (φ = 0°: Spule senkrecht zum Feld)
+   Φ(t) = B·A·cos φ(t),  U_i = −N·Φ′(t) = N·B·A·ω·sin φ   (Konvention wie Arbeitsblatt Induktion)
+   Motor: ω = 2π·f konstant  →  Û = N·B·A·2π·f,  T = 1/f
+   Von Hand: Spule folgt dem Finger/der Maus mit kurzer Verzögerung (τ = 0,08 s), ω aus der Drehung.
+   Schleifringe: U = U_i (Wechselspannung). Kommutator: alle halbe Umdrehung umgepolt → U = N·B·A·ω·|sin φ|.
+   Rechenschritt 1 ms (ω·dt ≤ 0,03 rad).
+   ===================================================================== */
+const F = { B: "#1f5c99", U: "#c62828", Avek: "#7b1fa2", draht: "#2b2b2b", kupfer: "#b5651d",
+            nord: "#d64541", sued: "#43a047", achse: "#4a4f57" };
+const PHI_SCHRIFT = '"Cambria Math", "Times New Roman", Times, "STIX Two Math", serif';
+const DT = 1e-3, TAU_HAND = 0.07, W_MAX = 2 * Math.PI * 6, U_LAMPE = 2.5;
+const P = { f: 1, N: 1000, B: 0.2, A: 10, antrieb: "motor", anschluss: "ring" };
+const Z = { t: 0, n: 0, phi: 0, omega: 0, ziel: 0, ziel2: 0, Phi: 0, uSp: 0, u: 0, stopBei: null, halt: false, zeitlupe: 1 };
+const tabelle = [];
+let zeigeFormel = false;
+
+const BA = () => P.B * P.A * 1e-4;                 // B·A in Wb (A in cm²)
+const omegaMotor = () => 2 * Math.PI * P.f;
+const Uhat = () => P.N * BA() * omegaMotor();
+const grad = phi => ((phi * 180 / Math.PI) % 360 + 360) % 360;
+const nz = (v, st) => Math.abs(v) < 0.5 * 10 ** -st ? 0 : v;     // kein „−0,00“
+
+function werte() {
+  const s = Math.sin(Z.phi);
+  Z.Phi = BA() * Math.cos(Z.phi);
+  Z.uSp = P.N * BA() * Z.omega * s;                // = −N·Φ′
+  Z.u = P.anschluss === "ring" ? Z.uSp : Z.uSp * (s >= 0 ? 1 : -1);
+}
+
+function physikSchritt(dt) {
+  if (Z.halt) return;
+  let dtEcht = dt;
+  if (P.antrieb === "motor") {
+    const w = omegaMotor(); let dphi = w * dt;
+    if (Z.stopBei !== null && Z.phi + dphi >= Z.stopBei - 1e-12) {
+      dphi = Z.stopBei - Z.phi; dtEcht = w > 0 ? dphi / w : 0;
+      Z.phi = Z.stopBei; Z.stopBei = null; Z.halt = true;
+    } else Z.phi += dphi;
+    Z.omega = w;
+  } else {
+    Z.ziel2 += (Z.ziel - Z.ziel2) * Math.min(1, dt / TAU_HAND);            // zweistufig geglättet → ruhige Kurve
+    const w = Math.max(-W_MAX, Math.min(W_MAX, (Z.ziel2 - Z.phi) / TAU_HAND));
+    Z.phi += w * dt; Z.omega = Math.abs(w) < 1e-3 ? 0 : w;
+  }
+  Z.t += dtEcht; Z.n++;
+  werte();
+  if (Z.n % 10 === 0 || Z.halt) aufzeichnen();
+  if (Z.halt && lauf.laeuft) lauf.pause();
+}
+
+function aufzeichnen() { plotPhi.punkt("phi", Z.t, Z.Phi * 1000); plotU.punkt("u", Z.t, Z.u); }
+
+/* ---------- Szene ---------- */
+const szene = leinwand($("szene"), () => szeneZeichnen());
+let Aktuell = null;                                // letzte Abbildung (für Zeiger-Eingabe)
+function abbildung(lw, vb, vh) {
+  const s = Math.min(lw.b / vb, lw.h / vh), ox = (lw.b - vb * s) / 2, oy = (lw.h - vh * s) / 2;
+  return { s, ox, oy, x: x => ox + x * s, y: y => oy + y * s };
+}
+function linie(ctx, A, pts, farbe = F.draht, breite = 4) {
+  ctx.save(); ctx.strokeStyle = farbe; ctx.lineWidth = Math.max(1.5, breite * A.s); ctx.lineJoin = "round"; ctx.lineCap = "round";
+  ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(A.x(x), A.y(y)) : ctx.moveTo(A.x(x), A.y(y))); ctx.stroke(); ctx.restore();
+}
+function flaeche(ctx, A, pts, fuell, rand = null, breite = 2) {
+  ctx.save(); ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(A.x(x), A.y(y)) : ctx.moveTo(A.x(x), A.y(y))); ctx.closePath();
+  ctx.fillStyle = fuell; ctx.fill(); if (rand) { ctx.strokeStyle = rand; ctx.lineWidth = Math.max(1, breite * A.s); ctx.stroke(); } ctx.restore();
+}
+function vtext(ctx, A, t, x, y, opt = {}) {
+  const o = Object.assign({ groesse: 15 }, opt); o.groesse *= Math.max(0.75, Math.min(1.1, A.s));
+  beschriftung(ctx, t, A.x(x), A.y(y), o);
+}
+/** Größe mit Index, z. B. „U“ „i“ „ = 1,26 V“ in hellem Kasten */
+function groesse(ctx, A, haupt, index, rest, x, y, farbe, gr = 17) {
+  ctx.save(); gr *= Math.max(0.72, Math.min(1.1, A.s));
+  const f1 = `600 ${fs(gr)}px ${css("--schrift")}`, f2 = `600 ${fs(gr * 0.68)}px ${css("--schrift")}`;
+  ctx.font = f1; const w1 = ctx.measureText(haupt).width, w3 = ctx.measureText(rest).width;
+  ctx.font = f2; const w2 = ctx.measureText(index).width;
+  const w = w1 + w2 + w3, X = A.x(x) - w / 2, Y = A.y(y), hh = fs(gr) * 0.75;
+  ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.strokeStyle = farbe; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(X - 6, Y - hh - 3, w + 12, 2 * hh + 6, 6) : ctx.rect(X - 6, Y - hh - 3, w + 12, 2 * hh + 6);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = farbe; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.font = f1; ctx.fillText(haupt, X, Y); ctx.font = f2; ctx.fillText(index, X + w1, Y + fs(gr) * 0.3);
+  ctx.font = f1; ctx.fillText(rest, X + w1 + w2, Y);
+  ctx.restore();
+}
+function lampe(ctx, A, x, y, hell, r = 26) {
+  const X = A.x(x), Y = A.y(y), R = r * A.s;
+  if (hell > 0.01) {
+    const g = ctx.createRadialGradient(X, Y, R * 0.3, X, Y, R * (1.4 + 2.4 * hell));
+    g.addColorStop(0, `rgba(255,214,0,${0.95 * hell})`); g.addColorStop(1, "rgba(255,214,0,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X, Y, R * (1.4 + 2.4 * hell), 0, 7); ctx.fill();
+  }
+  ctx.save(); ctx.fillStyle = hell > 0.01 ? `rgb(255,${Math.round(255 - 60 * hell)},${Math.round(255 - 200 * hell)})` : "#fff";
+  ctx.strokeStyle = F.draht; ctx.lineWidth = Math.max(2, 4 * A.s);
+  ctx.beginPath(); ctx.arc(X, Y, R, 0, 7); ctx.fill(); ctx.stroke();
+  const d = R * 0.7071; ctx.beginPath(); ctx.moveTo(X - d, Y - d); ctx.lineTo(X + d, Y + d); ctx.moveTo(X + d, Y - d); ctx.lineTo(X - d, Y + d); ctx.stroke();
+  ctx.restore();
+}
+/** Buchstabe mit Vektorpfeil darüber (Canvas kennt den Kombinationspfeil nicht zuverlässig) */
+function vektor(ctx, A, b, x, y, farbe, gr = 17) {
+  vtext(ctx, A, b, x, y, { fett: true, farbe, groesse: gr, hintergrund: false });
+  const k = Math.max(0.75, Math.min(1.1, A.s)), w = 0.42 * gr * k, h = 0.72 * gr * k;
+  pfeil(ctx, A.x(x) - w, A.y(y) - h, A.x(x) + w, A.y(y) - h, farbe, 1.6, 6);
+}
+/** Text auf der Leinwand; das Winkelzeichen φ wird geschwungen (Serifenschrift, kursiv) gesetzt wie im Arbeitsblatt */
+function textPhi(ctx, A, text, x, y, opt = {}) {
+  const o = Object.assign({ groesse: 15, farbe: "#1b2430", fett: false, ausrichtung: "center" }, opt);
+  const gr = fs(o.groesse * Math.max(0.75, Math.min(1.1, A.s))), teile = text.split("φ");
+  const fN = `${o.fett ? "600 " : ""}${gr}px ${css("--schrift")}`, fP = `italic ${Math.round(gr * 1.2)}px ${PHI_SCHRIFT}`;
+  ctx.save(); ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  const stuecke = []; teile.forEach((t, i) => { if (i) stuecke.push(["φ", fP]); if (t) stuecke.push([t, fN]); });
+  let w = 0; for (const [t, f] of stuecke) { ctx.font = f; w += ctx.measureText(t).width; }
+  let X = o.ausrichtung === "center" ? A.x(x) - w / 2 : A.x(x); const Y = A.y(y);
+  ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillRect(X - 3, Y - gr * 0.6 - 3, w + 6, gr * 1.2 + 6);
+  ctx.fillStyle = o.farbe;
+  for (const [t, f] of stuecke) { ctx.font = f; ctx.fillText(t, X, Y); X += ctx.measureText(t).width; }
+  ctx.restore();
+}
+function knoten(ctx, A, x, y) { ctx.fillStyle = F.draht; ctx.beginPath(); ctx.arc(A.x(x), A.y(y), Math.max(3, 6 * A.s), 0, 7); ctx.fill(); }
+
+/* Schräge Ansicht von vorn: x nach rechts, y nach unten, z zum Betrachter */
+const CX = 385, CY = 230, KX = -0.32, KY = 0.2;
+const pr = (x, y, z) => [CX + x + KX * z, CY + y + KY * z];
+function quader(ctx, A, x0, x1, y0, y1, z0, z1, farbe, dunkel) {
+  // Rückseite nicht sichtbar; Oberseite, rechte Seite (x1) und Vorderseite (z1) zeichnen
+  flaeche(ctx, A, [pr(x0, y0, z0), pr(x1, y0, z0), pr(x1, y0, z1), pr(x0, y0, z1)], dunkel, "rgba(0,0,0,.35)", 1.5);
+  flaeche(ctx, A, [pr(x1, y0, z0), pr(x1, y1, z0), pr(x1, y1, z1), pr(x1, y0, z1)], dunkel, "rgba(0,0,0,.35)", 1.5);
+  flaeche(ctx, A, [pr(x0, y0, z1), pr(x1, y0, z1), pr(x1, y1, z1), pr(x0, y1, z1)], farbe, "rgba(0,0,0,.45)", 1.5);
+}
+function quaderLinks(ctx, A, x0, x1, y0, y1, z0, z1, farbe, dunkel) {
+  // wie quader, aber die innere (rechte) Seite des rechten Pols ist verdeckt → linke Seite zeigen
+  flaeche(ctx, A, [pr(x0, y0, z0), pr(x1, y0, z0), pr(x1, y0, z1), pr(x0, y0, z1)], dunkel, "rgba(0,0,0,.35)", 1.5);
+  flaeche(ctx, A, [pr(x0, y0, z1), pr(x1, y0, z1), pr(x1, y1, z1), pr(x0, y1, z1)], farbe, "rgba(0,0,0,.45)", 1.5);
+}
+const spulenMass = () => { const W = Math.min(150, 75 * Math.sqrt(P.A / 10)); return { W, H: W }; };
+
+function feldlinien3D(ctx, A, vorn) {
+  for (const z of [-55, 0, 55]) {
+    if ((z > 0) !== vorn) continue;
+    for (const y of [-120, -60, 0, 60, 120]) {
+      const a = pr(-178, y, z), b = pr(178, y, z), al = 0.35 + 0.004 * z;
+      ctx.save(); ctx.strokeStyle = `rgba(31,92,153,${al})`; ctx.lineWidth = Math.max(1, 2 * A.s);
+      ctx.beginPath(); ctx.moveTo(A.x(a[0]), A.y(a[1])); ctx.lineTo(A.x(b[0]), A.y(b[1])); ctx.stroke(); ctx.restore();
+      for (const xm of [-120, 120]) { const p = pr(xm, y, z), q = pr(xm + 14, y, z);
+        pfeil(ctx, A.x(p[0]), A.y(p[1]), A.x(q[0]), A.y(q[1]), `rgba(31,92,153,${al + 0.15})`, 2, 10 * Math.max(0.7, A.s)); }
+    }
+  }
+}
+function ringPunkte(y, r, von = 0, bis = 2 * Math.PI, n = 40) {
+  const p = []; for (let i = 0; i <= n; i++) { const t = von + (bis - von) * i / n; p.push(pr(r * Math.cos(t), y, r * Math.sin(t))); } return p;
+}
+function schleifringe(ctx, A) {
+  const r = 30;
+  if (P.anschluss === "ring") {
+    for (const y of [195, 228]) {
+      flaeche(ctx, A, ringPunkte(y, r), "#d9a066", "#7a4a12", 2);
+      flaeche(ctx, A, [...ringPunkte(y, r, 0, Math.PI, 20), ...ringPunkte(y + 9, r, Math.PI, 0, 20)], "#b5651d", "#7a4a12", 1.5);
+      // Bürste rechts
+      const b = pr(r, y + 4, 0); flaeche(ctx, A, [[b[0], b[1] - 7], [b[0] + 26, b[1] - 7], [b[0] + 26, b[1] + 7], [b[0], b[1] + 7]], "#555", null);
+    }
+  } else {
+    const y = 205;
+    flaeche(ctx, A, ringPunkte(y, r), "#d9a066", "#7a4a12", 2);
+    flaeche(ctx, A, [...ringPunkte(y, r, 0, Math.PI, 20), ...ringPunkte(y + 16, r, Math.PI, 0, 20)], "#b5651d", "#7a4a12", 1.5);
+    // Schlitze zwischen den Halbringen (drehen mit, liegen dort, wo die Spule parallel zum Feld steht)
+    for (const th of [Z.phi + Math.PI / 2, Z.phi + 3 * Math.PI / 2]) {
+      const s = Math.sin(th); if (s < 0.05) continue;
+      const a = pr(r * Math.cos(th), y, r * s), b = pr(r * Math.cos(th), y + 16, r * s);
+      linie(ctx, A, [a, b], "#2b2b2b", 3.5);
+    }
+    for (const sx of [1, -1]) { const b = pr(sx * r, y + 8, 0), w = 26 * sx;
+      flaeche(ctx, A, [[b[0], b[1] - 7], [b[0] + w, b[1] - 7], [b[0] + w, b[1] + 7], [b[0], b[1] + 7]], "#555", null); }
+  }
+}
+function spule3D(ctx, A) {
+  const { W, H } = spulenMass(), s = Math.sin(Z.phi), c = Math.cos(Z.phi), dx = -s, dz = c;
+  const ecke = (f, yy) => pr(f * W * dx, yy, f * W * dz);
+  const rahmen = k => [ecke(-k, -H * k), ecke(k, -H * k), ecke(k, H * k), ecke(-k, H * k)];
+  flaeche(ctx, A, rahmen(1), s >= 0 ? "rgba(181,101,29,.20)" : "rgba(120,70,20,.12)");
+  for (const k of [1, 0.95, 0.9]) { const r = rahmen(k); linie(ctx, A, [...r, r[0]], F.kupfer, 4); }
+}
+function flaechenvektor3D(ctx, A) {
+  const L = 95, a = pr(0, 0, 0), b = pr(L * Math.cos(Z.phi), 0, L * Math.sin(Z.phi));
+  pfeil(ctx, A.x(a[0]), A.y(a[1]), A.x(b[0]), A.y(b[1]), F.Avek, Math.max(2.5, 4 * A.s), 14 * Math.max(0.7, A.s));
+  vektor(ctx, A, "A", b[0] + (b[0] >= a[0] ? 16 : -16), b[1] - 10, F.Avek);
+}
+
+function draufsicht(ctx, A) {
+  const x0 = 775, y0 = 12, x1 = 1188, y1 = 330, mx = 982, my = 178;
+  ctx.save(); ctx.fillStyle = "#fafbfc"; ctx.strokeStyle = "#c5ccd6"; ctx.lineWidth = Math.max(1, 1.5 * A.s);
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(A.x(x0), A.y(y0), (x1 - x0) * A.s, (y1 - y0) * A.s, 10 * A.s) : ctx.rect(A.x(x0), A.y(y0), (x1 - x0) * A.s, (y1 - y0) * A.s);
+  ctx.fill(); ctx.stroke(); ctx.restore();
+  vtext(ctx, A, "Blick von oben", x0 + 12, y0 + 18, { fett: true, groesse: 14, ausrichtung: "left", farbe: "#5a6675", hintergrund: false });
+  // Pole
+  flaeche(ctx, A, [[792, 92], [832, 92], [832, 264], [792, 264]], F.nord, "rgba(0,0,0,.4)");
+  flaeche(ctx, A, [[1132, 92], [1172, 92], [1172, 264], [1132, 264]], F.sued, "rgba(0,0,0,.4)");
+  vtext(ctx, A, "N", 812, 178, { fett: true, groesse: 22, farbe: "#fff", hintergrund: false });
+  vtext(ctx, A, "S", 1152, 178, { fett: true, groesse: 22, farbe: "#fff", hintergrund: false });
+  // Feldlinien
+  for (let y = 102; y <= 256; y += 25) {
+    linie(ctx, A, [[836, y], [1128, y]], "rgba(31,92,153,.35)", 2);
+    pfeil(ctx, A.x(890), A.y(y), A.x(906), A.y(y), "rgba(31,92,153,.55)", 2, 10 * Math.max(0.7, A.s));
+    pfeil(ctx, A.x(1060), A.y(y), A.x(1076), A.y(y), "rgba(31,92,153,.55)", 2, 10 * Math.max(0.7, A.s));
+  }
+  vektor(ctx, A, "B", 1108, 82, F.B);
+  pfeil(ctx, A.x(1060), A.y(80), A.x(1092), A.y(80), F.B, 3, 11 * Math.max(0.7, A.s));
+  // Hinweisring zum Drehen von Hand
+  if (P.antrieb === "hand") {
+    ctx.save(); ctx.strokeStyle = "rgba(123,31,162,.35)"; ctx.setLineDash([6 * A.s, 6 * A.s]); ctx.lineWidth = Math.max(1, 2 * A.s);
+    ctx.beginPath(); ctx.arc(A.x(mx), A.y(my), 118 * A.s, 0, 7); ctx.stroke(); ctx.restore();
+  }
+  // Spule (von oben ein Strich) und Flächenvektor
+  const { W } = spulenMass(), L = 30 + 0.55 * W, s = Math.sin(Z.phi), c = Math.cos(Z.phi);
+  linie(ctx, A, [[mx + L * s, my - L * c], [mx - L * s, my + L * c]], F.kupfer, 9);
+  ctx.save(); ctx.fillStyle = F.achse; ctx.beginPath(); ctx.arc(A.x(mx), A.y(my), 6 * A.s, 0, 7); ctx.fill(); ctx.restore();
+  // Winkelbogen φ
+  const g = grad(Z.phi) * Math.PI / 180;
+  if (g > 0.02) { ctx.save(); ctx.strokeStyle = "#1b2430"; ctx.lineWidth = Math.max(1, 2 * A.s);
+    ctx.beginPath(); ctx.arc(A.x(mx), A.y(my), 40 * A.s, 0, g); ctx.stroke(); ctx.restore(); }
+  linie(ctx, A, [[mx, my], [mx + 105, my]], "rgba(27,36,48,.5)", 1.5);
+  const LA = 92; pfeil(ctx, A.x(mx), A.y(my), A.x(mx + LA * c), A.y(my + LA * s), F.Avek, Math.max(2.5, 4 * A.s), 14 * Math.max(0.7, A.s));
+  vektor(ctx, A, "A", mx + (LA + 18) * c, my + (LA + 18) * s, F.Avek, 16);
+  const gm = g / 2 || 0.0;
+  textPhi(ctx, A, "φ = " + fmt(grad(Z.phi), 0) + "°", mx + 58 * Math.cos(gm) + 30, my + 58 * Math.sin(gm) + (g < 0.3 ? -16 : 0), { fett: true, groesse: 15 });
+  textPhi(ctx, A, P.antrieb === "hand" ? "Hier im Kreis ziehen, um die Spule zu drehen" : "Φ = B · A · cos φ = " + fmt(nz(Z.Phi * 1000, 3), 3, "mWb"),
+        mx, 306, { groesse: 14, farbe: P.antrieb === "hand" ? F.Avek : "#1b2430", fett: P.antrieb === "hand" });
+}
+
+function messgeraet(ctx, A) {
+  const x0 = 830, y0 = 372, b = 160, h = 128, mx = x0 + b / 2, my = y0 + 92, r = 66;
+  // Leitungen zum Messgerät
+  ctx.save(); ctx.fillStyle = "#fff"; ctx.strokeStyle = F.U; ctx.lineWidth = Math.max(2, 3.5 * A.s);
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(A.x(x0), A.y(y0), b * A.s, h * A.s, 10 * A.s) : ctx.rect(A.x(x0), A.y(y0), b * A.s, h * A.s);
+  ctx.fill(); ctx.stroke(); ctx.restore();
+  // Skala mit Nullpunkt in der Mitte
+  const Ub = P.antrieb === "motor" ? Uhat() : P.N * BA() * 2 * Math.PI * 2;
+  const bereiche = [0.5, 1, 2, 3, 5, 10, 20, 30, 50, 100], ber = bereiche.find(v => v >= Ub * 1.05) || 100;
+  ctx.save(); ctx.strokeStyle = "#1b2430"; ctx.lineWidth = Math.max(1, 1.5 * A.s);
+  ctx.beginPath(); ctx.arc(A.x(mx), A.y(my), r * A.s, Math.PI * 1.2, Math.PI * 1.8); ctx.stroke();
+  ctx.font = `${fs(11 * Math.max(0.8, A.s))}px ${css("--schrift")}`; ctx.fillStyle = "#1b2430"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (let i = -4; i <= 4; i++) {
+    const w = -Math.PI / 2 + i / 4 * 0.3 * Math.PI, l = i % 2 === 0 ? 10 : 5;
+    ctx.beginPath(); ctx.moveTo(A.x(mx + r * Math.cos(w)), A.y(my + r * Math.sin(w)));
+    ctx.lineTo(A.x(mx + (r - l) * Math.cos(w)), A.y(my + (r - l) * Math.sin(w))); ctx.stroke();
+    if (i % 4 === 0) ctx.fillText(i === 0 ? "0" : (i < 0 ? "−" : "") + fmt(ber, ber < 1 ? 1 : 0), A.x(mx + (r + 13) * Math.cos(w)), A.y(my + (r + 13) * Math.sin(w)));
+  }
+  // Zeiger
+  const q = Math.max(-1.08, Math.min(1.08, Z.u / ber)), w = -Math.PI / 2 + q * 0.3 * Math.PI;
+  ctx.strokeStyle = F.U; ctx.lineWidth = Math.max(1.5, 3 * A.s);
+  ctx.beginPath(); ctx.moveTo(A.x(mx), A.y(my)); ctx.lineTo(A.x(mx + (r - 4) * Math.cos(w)), A.y(my + (r - 4) * Math.sin(w))); ctx.stroke();
+  ctx.fillStyle = F.U; ctx.beginPath(); ctx.arc(A.x(mx), A.y(my), 5 * A.s, 0, 7); ctx.fill();
+  ctx.restore();
+  vtext(ctx, A, "V", x0 + 18, y0 + 20, { fett: true, groesse: 20, farbe: F.U, hintergrund: false });
+  groesse(ctx, A, "U", "i", " = " + fmt(nz(Z.u, 2), 2, "V"), mx, y0 + h + 22, F.U, 16);
+}
+
+function szeneZeichnen() {
+  const { ctx, b, h } = szene; ctx.clearRect(0, 0, b, h);
+  const A = abbildung(szene, 1200, 560); Aktuell = A;
+  const { H } = spulenMass(), yTop = -183;
+  // Joch des Hufeisenmagneten (hinten unten) und Pole
+  quader(ctx, A, -300, 300, 165, 200, -85, -45, "#9aa3ad", "#7d8690");
+  quader(ctx, A, -300, -180, -165, 200, -85, 85, F.nord, "#b0302c");
+  feldlinien3D(ctx, A, false);
+  // Achse hinter der Spule (oberer und unterer Teil) und Spule
+  linie(ctx, A, [pr(0, yTop, 0), pr(0, 240, 0)], F.achse, 6);
+  spule3D(ctx, A);
+  feldlinien3D(ctx, A, true);
+  quaderLinks(ctx, A, 180, 300, -165, 200, -85, 85, F.sued, "#2e7d32");
+  flaechenvektor3D(ctx, A);
+  const pN = pr(-240, 15, 85), pS = pr(240, 15, 85);
+  vtext(ctx, A, "N", pN[0], pN[1], { fett: true, groesse: 34, farbe: "#fff", hintergrund: false });
+  vtext(ctx, A, "S", pS[0], pS[1], { fett: true, groesse: 34, farbe: "#fff", hintergrund: false });
+  schleifringe(ctx, A);
+  // Antrieb oben
+  const top = pr(0, yTop, 0);
+  if (P.antrieb === "motor") {
+    flaeche(ctx, A, [[top[0] - 52, top[1] - 34], [top[0] + 52, top[1] - 34], [top[0] + 52, top[1] + 4], [top[0] - 52, top[1] + 4]], "#e3e7ec", "#5a6675");
+    vtext(ctx, A, "Motor", top[0], top[1] - 15, { fett: true, groesse: 15, hintergrund: false });
+  } else {
+    const k = pr(55 * Math.cos(Z.phi), yTop, 55 * Math.sin(Z.phi));
+    linie(ctx, A, [top, k], "#5a6675", 7);
+    linie(ctx, A, [k, [k[0], k[1] - 26]], "#7b1fa2", 11);
+    vtext(ctx, A, "Kurbel", top[0] + 95, top[1] - 12, { fett: true, groesse: 14 });
+  }
+  // Leitungen zu Messgerät und Lampe
+  const Y1 = 352, Y2 = 540, xL = 1112;
+  if (P.anschluss === "ring") {
+    const b1 = pr(30, 199, 0), b2 = pr(30, 232, 0);
+    linie(ctx, A, [[b1[0] + 26, b1[1]], [745, b1[1]], [745, Y1], [xL, Y1], [xL, Y2], [765, Y2], [765, b2[1]], [b2[0] + 26, b2[1]]]);
+  } else {
+    const b1 = pr(30, 213, 0), b2 = pr(-30, 213, 0);
+    linie(ctx, A, [[b1[0] + 26, b1[1]], [745, b1[1]], [745, Y1], [xL, Y1], [xL, Y2], [b2[0] - 40, Y2], [b2[0] - 40, b2[1]], [b2[0] - 26, b2[1]]]);
+  }
+  linie(ctx, A, [[910, Y1], [910, 372]]); linie(ctx, A, [[910, 500], [910, Y2]]);
+  knoten(ctx, A, 910, Y1); knoten(ctx, A, 910, Y2);
+  messgeraet(ctx, A);
+  lampe(ctx, A, xL, 446, Math.min(1, (Z.u / U_LAMPE) ** 2));
+  vtext(ctx, A, "Lampe", xL, 404, { groesse: 14 });
+  // Beschriftungen
+  groesse(ctx, A, "N", "", " = " + P.N + " Windungen", 385, 320, "#7a4a12", 14);
+  vtext(ctx, A, P.anschluss === "ring" ? "Schleifringe" : "Kommutator", 470, 520, { groesse: 14, fett: true });
+  vtext(ctx, A, "Magnetfeld B = " + fmt(P.B, 2, "T") + "   Fläche A = " + fmt(P.A, 0, "cm²"), 40, 22, { groesse: 13, farbe: "#5a6675", ausrichtung: "left" });
+  draufsicht(ctx, A);
+}
+
+/* ---------- Drehen von Hand (Maus/Finger in der Ansicht von oben) ---------- */
+let zieht = false, wAlt = 0;
+function zeigerWinkel(e) {
+  const r = $("szene").getBoundingClientRect(), A = Aktuell; if (!A) return null;
+  const x = (e.clientX - r.left - A.ox) / A.s, y = (e.clientY - r.top - A.oy) / A.s;
+  if (x < 775 || x > 1188 || y < 12 || y > 330) return null;
+  return Math.atan2(y - 178, x - 982);
+}
+$("szene").addEventListener("pointerdown", e => {
+  const w = zeigerWinkel(e); if (w === null) return;
+  if (P.antrieb !== "hand") { P.antrieb = "hand"; gruppeZeigen("antrieb"); antriebGewechselt(); }
+  zieht = true; wAlt = w; Z.halt = false; lauf.start(); $("szene").setPointerCapture(e.pointerId); e.preventDefault();
+});
+$("szene").addEventListener("pointermove", e => {
+  if (!zieht) return;
+  const r = $("szene").getBoundingClientRect(), A = Aktuell;
+  const w = Math.atan2((e.clientY - r.top - A.oy) / A.s - 178, (e.clientX - r.left - A.ox) / A.s - 982);
+  let d = w - wAlt; if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
+  Z.ziel += d; wAlt = w;
+});
+for (const ev of ["pointerup", "pointercancel"]) $("szene").addEventListener(ev, () => { zieht = false; });
+
+/* ---------- Diagramme ---------- */
+const plotPhi = new Diagramm($("plotPhi"), { xName: "t", xEinheit: "s", yName: "Φ", yEinheit: "mWb", fenster: 3 });
+plotPhi.reihe("phi", "Φ", F.B);
+const plotU = new Diagramm($("plotU"), { xName: "t", xEinheit: "s", yName: "U", yEinheit: "V", fenster: 3 });
+plotU.reihe("u", "U", F.U);
+function achsenSetzen() {
+  const f = BA() * 1000 * 1.2;
+  plotPhi.achsen({ yMin: -f, yMax: f });
+  if (P.antrieb === "motor") {
+    const fe = Math.max(1.5, Math.min(8, 3 / P.f)), m = Math.max(0.1, Uhat()) * 1.2;
+    plotPhi.achsen({ fenster: fe }); plotU.achsen({ fenster: fe, yMin: -m, yMax: m });
+  } else {
+    const m = P.N * BA() * 2 * Math.PI * 2 * 1.2;
+    plotPhi.achsen({ fenster: 6 }); plotU.achsen({ fenster: 6, yMin: -m, yMax: m });
+  }
+}
+
+/* ---------- Messwerte und Hinweise ---------- */
+function messwerteZeigen() {
+  const motor = P.antrieb === "motor", fHand = Math.abs(Z.omega) / (2 * Math.PI);
+  $("messwerte").innerHTML =
+    `<div><b><i>t</i></b> = ${fmt(Z.t, 2, "s")}</div>
+     <div><b><span class='vphi'>φ</span></b> = ${fmt(grad(Z.phi), 0)}°</div>
+     <div style="color:${F.B}"><b><i>Φ</i></b> = ${fmt(nz(Z.Phi * 1000, 3), 3, "mWb")}</div>
+     <div class="strom"><b><i>U</i><sub>i</sub></b> = ${fmt(nz(Z.u, 2), 2, "V")}</div>
+     <div class="strom"><b><i>Û</i></b> = ${motor ? fmt(Uhat(), 2, "V") : "–"}</div>
+     <div><b><i>f</i></b> = ${fmt(motor ? P.f : fHand, 2, "Hz")}</div>
+     <div><b><i>T</i></b> = ${motor ? fmt(1 / P.f, 2, "s") : (fHand > 0.05 ? fmt(1 / fHand, 2, "s") : "–")}</div>`;
+  const hw = [];
+  if (P.antrieb === "hand") hw.push("Von Hand: Ziehen Sie in der Ansicht „Blick von oben“ im Kreis. Drehen Sie mal langsam, mal schnell, und beobachten Sie die Spannung.");
+  if (P.anschluss === "komm") hw.push("Kommutator: Bei jeder halben Umdrehung wird die Spule umgepolt. Die Spannung wird nie negativ – es entsteht eine pulsierende Gleichspannung.");
+  if (motor && Z.halt) hw.push("Angehalten bei <span class='vphi'>φ</span> = " + fmt(grad(Z.phi), 0) + "° – die Werte sind eine Momentaufnahme während der Drehung.");
+  $("hinweis").innerHTML = hw.join("<br>"); $("hinweis").classList.toggle("an", hw.length > 0);
+}
+
+/* ---------- Messtabelle ---------- */
+function tabelleZeigen() {
+  let k = `<tr><th>Nr.</th><th><i>N</i></th><th><i>B</i> in T</th><th><i>A</i> in cm²</th><th><i>f</i> in Hz</th><th><i>T</i> in s</th><th><i>Û</i> in V</th>`;
+  if (zeigeFormel) k += `<th class="verh"><i>N</i>·<i>B</i>·<i>A</i>·2π·<i>f</i> in V</th>`;
+  k += "</tr>";
+  tabelle.forEach((r, i) => {
+    k += `<tr><td>${i + 1}</td><td>${r.N}</td><td>${fmt(r.B, 2)}</td><td>${r.A}</td><td>${fmt(r.f, 2)}</td><td>${fmt(1 / r.f, 2)}</td><td>${fmt(r.U, 2)}</td>`;
+    if (zeigeFormel) k += `<td class="verh">${r.N}·${fmt(r.B, 2)}·${fmt(r.A / 10000, 4)}·2π·${fmt(r.f, 2)} = ${fmt(r.N * r.B * r.A * 1e-4 * 2 * Math.PI * r.f, 2)}</td>`;
+    k += "</tr>";
+  });
+  if (!tabelle.length) k += `<tr><td colspan="${zeigeFormel ? 8 : 7}" class="klein">Noch keine Messwerte – Knopf „Messwerte eintragen“ drücken.</td></tr>`;
+  $("tabelle").innerHTML = k;
+  $("btnFormel").classList.toggle("aktiv", zeigeFormel);
+}
+function eintragen() {
+  if (P.antrieb !== "motor") { $("hinweis").innerHTML = "Für die Messtabelle bitte den <b>Motor</b> verwenden – nur dann ist die Drehfrequenz konstant."; $("hinweis").classList.add("an"); return; }
+  tabelle.push({ N: P.N, B: P.B, A: P.A, f: P.f, U: Uhat() });
+  tabelleZeigen();
+  const th = document.querySelector(".tabhuelle"); th.scrollTop = th.scrollHeight;
+}
+$("btnEintragen").onclick = eintragen;
+$("btnFormel").onclick = () => { zeigeFormel = !zeigeFormel; tabelleZeigen(); };
+$("btnLoeschen").onclick = () => { tabelle.pop(); tabelleZeigen(); };
+
+/* ---------- Steuerung ---------- */
+function neuStart(phi0 = 0) {
+  Object.assign(Z, { t: 0, n: 0, phi: phi0, ziel: phi0, ziel2: phi0, omega: P.antrieb === "motor" ? omegaMotor() : 0, stopBei: null, halt: false });
+  plotPhi.leeren(); plotU.leeren(); achsenSetzen(); werte(); aufzeichnen();
+}
+const R = {};
+R.f = regler($("regler"), { id: "f", name: "Drehfrequenz des Motors <i>f</i>", min: 0.25, max: 5, schritt: 0.25, wert: P.f, einheit: "Hz", stellen: 2,
+                            beiAenderung: v => { P.f = v; if (P.antrieb === "motor") Z.omega = omegaMotor(); achsenSetzen(); werte(); } });
+R.N = regler($("regler"), { id: "N", name: "Windungszahl der Spule <i>N</i>", min: 100, max: 2000, schritt: 100, wert: P.N, stellen: 0,
+                            beiAenderung: v => { P.N = v; achsenSetzen(); werte(); } });
+R.B = regler($("regler"), { id: "B", name: "Magnetfeld <i>B</i>", min: 0.05, max: 0.5, schritt: 0.05, wert: P.B, einheit: "T", stellen: 2,
+                            beiAenderung: v => { P.B = v; achsenSetzen(); werte(); } });
+R.A = regler($("regler"), { id: "A", name: "Fläche der Spule <i>A</i>", min: 5, max: 40, schritt: 5, wert: P.A, einheit: "cm²", stellen: 0,
+                            beiAenderung: v => { P.A = v; achsenSetzen(); werte(); } });
+
+const G = {};
+function gruppe(id, schluessel, optionen, nachher) {
+  const el = $(id); G[schluessel] = { el, optionen };
+  for (const [wert, text] of optionen) {
+    const k = document.createElement("button"); k.innerHTML = text; k.dataset.wert = String(wert);
+    k.onclick = () => { P[schluessel] = wert; gruppeZeigen(schluessel); nachher && nachher(); };
+    el.appendChild(k);
+  }
+}
+function gruppeZeigen(s) { for (const k of G[s].el.children) k.classList.toggle("aktiv", k.dataset.wert === String(P[s])); }
+const alleZeigen = () => { for (const s in G) gruppeZeigen(s); for (const id in R) R[id].setzen(P[id]); };
+function antriebGewechselt() {
+  R.f.sperren(P.antrieb !== "motor");
+  Z.ziel = Z.ziel2 = Z.phi; Z.stopBei = null; Z.halt = false;
+  Z.omega = P.antrieb === "motor" ? omegaMotor() : 0;
+  plotPhi.leeren(); plotU.leeren(); Z.t = 0; achsenSetzen(); werte(); lauf.start();
+}
+gruppe("gAntrieb", "antrieb", [["motor", "Motor (gleichmäßig)"], ["hand", "Kurbel von Hand"]], antriebGewechselt);
+gruppe("gAnschluss", "anschluss", [["ring", "Schleifringe"], ["komm", "Kommutator"]], () => { werte(); });
+
+function einstellen(w) {
+  Object.assign(P, { f: 1, N: 1000, B: 0.2, A: 10, antrieb: "motor", anschluss: "ring" }, w);
+  alleZeigen(); R.f.sperren(P.antrieb !== "motor"); neuStart();
+}
+/** Spule dreht vom Start aus bis zum Winkel (in Grad, nach einer vollen Umdrehung) und hält an */
+function bisWinkel(g, umdrehungen = 1) {
+  neuStart(); Z.stopBei = 2 * Math.PI * umdrehungen + g * Math.PI / 180;
+  let n = 0; while (!Z.halt && n < 1e6) { physikSchritt(DT); n++; }
+  lauf.pause();
+}
+function weiter45() {
+  if (P.antrieb === "hand") { Z.ziel = Math.round(Z.ziel / (Math.PI / 4)) * Math.PI / 4 + Math.PI / 4; lauf.start(); return; }
+  const v = Math.PI / 4; Z.stopBei = (Math.floor(Z.phi / v + 1e-6) + 1) * v; Z.halt = false; lauf.start();
+}
+const presets = [
+  { name: "Standard: 1 Hz", werte: {} },
+  { name: "Doppelt so schnell: 2 Hz", werte: { f: 2 } },
+  { name: "Doppelte Windungszahl: 2000", werte: { N: 2000 } },
+  { name: "Stärkerer Magnet: 0,4 T", werte: { B: 0.4 } },
+  { name: "Größere Spule: 20 cm²", werte: { A: 20 } },
+  { name: "Von Hand kurbeln", werte: { antrieb: "hand" } },
+  { name: "Gleichspannung mit Kommutator", werte: { anschluss: "komm" } },
+];
+for (const p of presets) {
+  const k = document.createElement("button"); k.textContent = p.name;
+  k.onclick = () => { schritte.aus(); einstellen(p.werte); lauf.start(); };
+  $("presets").appendChild(k);
+}
+
+/* ---------- Schritt für Schritt ---------- */
+const AUFGABE = t => `<div class="auftrag">${t}</div>`;
+const Ui = "<i>U</i><sub>i</sub>";
+const schritte = schrittmodus([
+  { text: "<b>Aufbau:</b> Eine Spule mit 1000 Windungen sitzt drehbar zwischen dem Nordpol und dem Südpol eines Magneten. Ein Motor dreht sie gleichmäßig. Über die <b>Schleifringe</b> ist die Spule mit dem Spannungsmessgerät und einer Lampe verbunden." +
+          AUFGABE("Vermuten Sie: Entsteht eine Spannung, obwohl kein Netzgerät und keine Batterie angeschlossen ist?"),
+    vorbereiten: () => { einstellen({}); lauf.pause(); } },
+  { text: "<b><span class='vphi'>φ</span> = 0°:</b> Die Spule steht <b>senkrecht</b> zum Magnetfeld, der Flächenvektor <i>A</i>⃗ zeigt in Richtung des Feldes. Alle Feldlinien gehen durch die Spule: Der Fluss ist am größten, <i>Φ</i> = 0,200 mWb. " +
+          `In diesem Moment ändert sich <i>Φ</i> aber kaum – deshalb ist ${Ui} = 0 V.`,
+    vorbereiten: () => { einstellen({}); bisWinkel(0); } },
+  { text: `<b><span class='vphi'>φ</span> = 90°:</b> Die Spule liegt <b>parallel</b> zum Feld, keine Feldlinie geht hindurch: <i>Φ</i> = 0. Hier ändert sich <i>Φ</i> aber am schnellsten (steilste Stelle im Diagramm) – ${Ui} ist am größten: <i>Û</i> = 1,26 V.`,
+    vorbereiten: () => { einstellen({}); bisWinkel(90); } },
+  { text: `<b><span class='vphi'>φ</span> = 180°:</b> Die Spule steht wieder senkrecht zum Feld, aber jetzt gehen die Feldlinien von der anderen Seite hindurch: <i>Φ</i> = −0,200 mWb. ${Ui} = 0 V.`,
+    vorbereiten: () => { einstellen({}); bisWinkel(180); } },
+  { text: `<b><span class='vphi'>φ</span> = 270°:</b> Wieder parallel, <i>Φ</i> = 0. ${Ui} ist wieder am größten, aber <b>negativ</b>: −1,26 V. Die Spannung hat jetzt die andere Richtung.`,
+    vorbereiten: () => { einstellen({}); bisWinkel(270); } },
+  { text: `<b>Gleichmäßige Drehung:</b> <i>Φ</i> und ${Ui} ergeben Sinuskurven, die um eine Viertelumdrehung gegeneinander verschoben sind. Nach einer Umdrehung (Periodendauer <i>T</i> = 1 s) wiederholt sich alles: Der Generator erzeugt eine <b>Wechselspannung</b>. Die Lampe flackert zweimal pro Umdrehung.`,
+    vorbereiten: () => { einstellen({}); lauf.start(); } },
+  { text: `<b>Doppelt so schnell (2 Hz):</b> <i>Φ</i> ändert sich doppelt so schnell. Deshalb ist <i>Û</i> doppelt so groß (2,51 V), und die Periodendauer ist halb so lang (<i>T</i> = 0,5 s). Beide Messungen stehen jetzt in der Tabelle.`,
+    vorbereiten: () => { tabelle.length = 0; zeigeFormel = false; einstellen({}); eintragen(); einstellen({ f: 2 }); eintragen(); lauf.start(); } },
+  { text: `<b>Doppelte Windungszahl (2000):</b> Jede Windung liefert ihren Teil der Spannung – doppelt so viele Windungen, doppelt so große Spannung: <i>Û</i> = 2,51 V. Genauso wirkt ein doppelt so starkes Magnetfeld <i>B</i> oder eine doppelt so große Fläche <i>A</i>.`,
+    vorbereiten: () => { einstellen({ N: 2000 }); if (tabelle.length < 3) eintragen(); lauf.start(); } },
+  { text: "<b>Scheitelwert der Generatorspannung:</b>" +
+          `<div class="auftrag" style="text-align:center;font-size:1.2em"><i>Û</i> = <i>N</i> · <i>B</i> · <i>A</i> · <i>ω</i> &nbsp; mit &nbsp; <i>ω</i> = 2π · <i>f</i></div>` +
+          "Beispiel: <i>Û</i> = 1000 · 0,2 T · 0,001 m² · 2π · 1 Hz ≈ 1,26 V. In der Tabelle ist die Formel zum Vergleich eingeblendet.",
+    vorbereiten: () => { zeigeFormel = true; tabelleZeigen(); einstellen({}); lauf.start(); } },
+  { text: `<b>Kommutator:</b> Statt zwei Schleifringen ein geteilter Ring. Er polt die Spule bei jeder halben Umdrehung um, genau dann, wenn ${Ui} = 0 ist. Die Spannung wird nie negativ: eine <b>pulsierende Gleichspannung</b> (so arbeiten Gleichstrommotoren und alte Dynamos).`,
+    vorbereiten: () => { einstellen({ anschluss: "komm" }); lauf.start(); } },
+]);
+$("btnSchrittmodus").onclick = () => schritte.aktiv ? schritte.aus() : schritte.an();
+
+/* ---------- Erklärung ---------- */
+$("infoText").innerHTML = `
+  <p><b>Aufbau:</b> Eine Spule (<i>N</i> Windungen, Fläche <i>A</i>) dreht sich im Magnetfeld <i>B</i> zwischen den Polen eines Hufeisenmagneten.
+  <span class='vphi'>φ</span> ist der Winkel zwischen dem Flächenvektor <i>A</i>⃗ (senkrecht auf der Spule) und dem Magnetfeld <i>B</i>⃗. Der magnetische Fluss durch die Spule ist
+  <i>Φ</i> = <i>B</i> · <i>A</i> · cos <span class='vphi'>φ</span> – wie auf dem Arbeitsblatt zur Induktion.</p>
+  <p><b>Induktion:</b> Dreht sich die Spule, ändert sich <i>Φ</i> ständig. Dabei wird die Spannung <i>U</i><sub>i</sub> = −<i>N</i> · <i>Φ</i>′(<i>t</i>) induziert.
+  Bei gleichmäßiger Drehung ist <span class='vphi'>φ</span> = <i>ω</i> · <i>t</i> mit <i>ω</i> = 2π · <i>f</i>, also
+  <i>Φ</i>(<i>t</i>) = <i>B</i> · <i>A</i> · cos(<i>ω t</i>) und <i>U</i><sub>i</sub>(<i>t</i>) = <i>N</i> · <i>B</i> · <i>A</i> · <i>ω</i> · sin(<i>ω t</i>).
+  Der Scheitelwert ist <i>Û</i> = <i>N</i> · <i>B</i> · <i>A</i> · <i>ω</i>, die Periodendauer <i>T</i> = 1/<i>f</i>.</p>
+  <p><b>Schleifringe und Kommutator:</b> Über zwei Schleifringe wird die Spannung der Spule unverändert abgegriffen (Wechselspannung). Ein Kommutator (geteilter Ring)
+  vertauscht die Anschlüsse bei jeder halben Umdrehung, die Spannung bleibt dann immer positiv (pulsierende Gleichspannung).</p>
+  <p><b>Von Hand:</b> Die Spule folgt der Hand mit kurzer Verzögerung. Die Spannung hängt davon ab, wie schnell gedreht wird.
+  (Im echten Versuch merkt man außerdem: Leuchtet die Lampe, lässt sich die Kurbel schwerer drehen – die elektrische Energie stammt aus der Arbeit beim Drehen.)</p>
+  <p class="klein">Modell: homogenes Feld im ganzen Bereich der Spule, ideale Spule ohne Widerstand, Spannungsmessgerät mit Nullpunkt in der Mitte, Lampe für 2,5 V. Rechenschritt 1 ms.</p>`;
+
+/* ---------- Start ---------- */
+const lauf = new Schleife({ dt: DT, schritt: physikSchritt,
+                            bild: () => { szeneZeichnen(); plotPhi.zeichnen(); plotU.zeichnen(); messwerteZeigen(); } });
+bedienungEinrichten(lauf, { reset: () => { schritte.aus(); neuStart(); lauf.pause(); },
+                            einzel: () => { Z.halt = false; lauf.einzelschritt(1 / 48); } });
+{ const start = lauf.start.bind(lauf); lauf.start = () => { Z.halt = false; start(); }; }
+$("btnLangsam").onclick = () => { Z.zeitlupe = Z.zeitlupe === 1 ? 0.25 : 1; lauf.tempo = Z.zeitlupe;
+  $("btnLangsam").textContent = "Zeitlupe: " + (Z.zeitlupe === 1 ? "aus" : "an (×0,25)");
+  $("btnLangsam").classList.toggle("aktiv", Z.zeitlupe !== 1); };
+$("btn45").onclick = weiter45;
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  const k = e.key.toLowerCase();
+  if (k === "w") weiter45(); else if (k === "m") eintragen();
+});
+$("btnCSV").onclick = () => speichern("generator_messwerte.csv",
+  "Nr.;N;B in T;A in cm²;f in Hz;T in s;Û in V\n" +
+  tabelle.map((r, i) => [i + 1, r.N, fmt(r.B, 2), r.A, fmt(r.f, 2), fmt(1 / r.f, 2), fmt(r.U, 2)].join(";")).join("\n"), "text/csv");
+$("btnPNG").onclick = () => alsPNG("generator.png", [$("szene"), $("plotPhi"), $("plotU")]);
+alleZeigen(); tabelleZeigen(); neuStart(); lauf.start();
+</script>
+</body>
+</html>
